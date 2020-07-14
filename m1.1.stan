@@ -63,8 +63,20 @@ model {
   }
 }
 
+
 generated quantities {
-  for (i in 1:N){
-  Rsquared[i] = 
-  
+  //vector[N] Rsquared;
+  // for (i in 1:N){
+    //   if (NCn[i]!=3)//(NCn[i]>10)//
+    //   {Rsquared[i] = (eta_s[i]-logit(to_vector(NCs[i])/to_vector(Ntrials))^2}
+    
+    // Rsquared = (eta_s-logit(to_vector(NCs)/Ntrials)^2.
+    
+    vector[2*N] log_lik;
+    for (i in 1:N){
+    //silence
+    log_lik[i] = binomial_lpmf(NCs[i] | Ntrials, p_s[i]);
+    //noise
+    log_lik[N+i] = binomial_lpmf(NCn[i] | Ntrials, p_n[i]);}
+    
 }
