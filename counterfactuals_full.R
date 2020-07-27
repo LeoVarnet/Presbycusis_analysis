@@ -1,7 +1,7 @@
 # calculate counterfactuals for simple models
 
-rm(heardata_pred_center)
-rm(heardata_pred)
+if (exists("heardata_pred_center")){rm(heardata_pred_center)}
+if (exists("heardata_pred")){rm(heardata_pred)}
 
 heardata_pred <- data.frame(
   PTA_pred,
@@ -46,10 +46,12 @@ logit_pn_pred_center[,i] = logit_ps_pred_center[,i] +
 
 ps_pred[,i] = 1/16+(1-1/16)*inv.logit(logit_ps_pred[,i])
 #pn_pred[,i] = 1/16+(1-apply(parsfit$plapse[,],1,mean)-1/16)*inv.logit(logit_pn_pred[,i])
-pn_pred[,i] = 1/16+(1-1/16-parsfit$plapse[,1])*inv.logit(logit_pn_pred[,i])
+#pn_pred[,i] = 1/16+(1-1/16-parsfit$plapse[,1])*inv.logit(logit_pn_pred[,i])
+pn_pred[,i] = 1/16+(1-1/16-parsfit$plapse)*inv.logit(logit_pn_pred[,i])
 ps_pred_center[,i] = 1/16+(1-1/16)*inv.logit(logit_ps_pred_center[,i])
 #pn_pred_center[,i] = 1/16+(1-1/16-parsfit$plapse[,heardata_pred$center[i]])*inv.logit(logit_pn_pred_center[,i])
-pn_pred_center[,i] = 1/16+(1-1/16-parsfit$plapse[,1])*inv.logit(logit_pn_pred_center[,i])
+#pn_pred_center[,i] = 1/16+(1-1/16-parsfit$plapse[,1])*inv.logit(logit_pn_pred_center[,i])
+pn_pred_center[,i] = 1/16+(1-1/16-parsfit$plapse)*inv.logit(logit_pn_pred_center[,i])
 }  
 
 heardata_pred$agefactor <- cut.default(heardata_pred$age, seq(from=min_age-1,to=max_age+1,length.out=4))

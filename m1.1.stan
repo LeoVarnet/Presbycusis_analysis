@@ -50,15 +50,15 @@ model {
   beta_age ~ normal(0,1);//normal(0,2);
   beta_cond ~ normal(0,1);//normal(0,2);
   beta_gender ~ normal(0,1);//normal(0,2);
-  beta_PTA ~ normal(0,1);//normal(0,2);
+  beta_PTA ~ normal(0,10);//normal(0,2);
   plapse ~ beta(3600.0-2756.0,3600.0);
   if(!prior_only)
   for (i in 1:N){
-    if (NCn[i]!=3)//(NCn[i]>10)//
+    if (NCn[i]!=100)//(NCn[i]>10)//
       {NCn[i] ~ binomial(Ntrials, p_n[i]);
       NCs[i] ~ binomial(Ntrials, p_s[i]);}
      else
-       {1 ~ binomial(Ntrials, p_n[i]);
+       {//1 ~ binomial(Ntrials, p_n[i]);
        NCs[i] ~ binomial(Ntrials, p_s[i]);}
   }
 }

@@ -1,7 +1,7 @@
 # calculate counterfactuals for simple models
 
-rm(heardata_pred_center)
-rm(heardata_pred)
+if (exists("heardata_pred_center")){rm(heardata_pred_center)}
+if (exists("heardata_pred")){rm(heardata_pred)}
 
 heardata_pred <- data.frame(
   PTA_pred,
@@ -12,7 +12,11 @@ heardata_pred <- data.frame(
   c(rep(0,NPTApred*Nagepred*7),rep(1,NPTApred*Nagepred*7)))
 Ntotalpred = dim(heardata_pred)[1]
 colnames(heardata_pred) <- c("PTA","PTAz","age", "agez","center","gender")
-heardata_pred$agefactor <- cut.default(heardata_pred$age, seq(from=min_age-1,to=max_age+1,length.out=4))
+#heardata_pred$agefactor <- cut.default(heardata_pred$age, seq(from=min_age-1,to=max_age+1,length.out=4))
+heardata_pred$agefactor <- cut.default(heardata_pred$age, agefactor_cutoff)
+levels(heardata_pred$agefactor) <- c(paste("age = ", floor(agefactor_cutoff[1]), "-", floor(agefactor_cutoff[2]),"y"),
+                                 paste("age = ", floor(agefactor_cutoff[2]), "-", floor(agefactor_cutoff[3]),"y"),
+                                 paste("age = ", floor(agefactor_cutoff[3]), "-", floor(agefactor_cutoff[4]),"y"))#paste("age (y) =", levels(heardata$agefactor))
 
 ps_pred = matrix(nrow = Nsamples, ncol = Ntotalpred)
 ps_pred_center = matrix(nrow = Nsamples, ncol = Ntotalpred)
@@ -39,12 +43,19 @@ logit_pn_pred_center[,i] = logit_ps_pred_center[,i] +
   parsfit$beta_cond[]
 
 ps_pred[,i] = 1/16+(1-1/16)*inv.logit(logit_ps_pred[,i])
-pn_pred[,i] = 1/16+(1-apply(parsfit$plapse[,],1,mean)-1/16)*inv.logit(logit_pn_pred[,i])
+#pn_pred[,i] = 1/16+(1-apply(parsfit$plapse[,],1,mean)-1/16)*inv.logit(logit_pn_pred[,i])
+#pn_pred[,i] = 1/16+(1-1/16-parsfit$plapse[,1])*inv.logit(logit_pn_pred[,i])
+pn_pred[,i] = 1/16+(1-1/16-parsfit$plapse)*inv.logit(logit_pn_pred[,i])
 ps_pred_center[,i] = 1/16+(1-1/16)*inv.logit(logit_ps_pred_center[,i])
-pn_pred_center[,i] = 1/16+(1-1/16-parsfit$plapse[,heardata_pred$center[i]])*inv.logit(logit_pn_pred_center[,i])
+#pn_pred_center[,i] = 1/16+(1-1/16-parsfit$plapse[,heardata_pred$center[i]])*inv.logit(logit_pn_pred_center[,i])
+#pn_pred_center[,i] = 1/16+(1-1/16-parsfit$plapse[,1])*inv.logit(logit_pn_pred_center[,i])
+pn_pred_center[,i] = 1/16+(1-1/16-parsfit$plapse)*inv.logit(logit_pn_pred_center[,i])
 }  
 
 heardata_pred$agefactor <- cut.default(heardata_pred$age, seq(from=min_age-1,to=max_age+1,length.out=4))
+levels(heardata_pred$agefactor) <- c(paste("age = ", floor(agefactor_cutoff[1]), "-", floor(agefactor_cutoff[2]),"y"),
+                                paste("age = ", floor(agefactor_cutoff[2]), "-", floor(agefactor_cutoff[3]),"y"),
+                                paste("age = ", floor(agefactor_cutoff[3]), "-", floor(agefactor_cutoff[4]),"y"))#paste("age (y) =", levels(heardata$agefactor))
 heardata_pred$center <- as.factor(heardata_pred$center)
 levels(heardata_pred$center)[levels(heardata_pred$center)=="1"] <- "Marseille"
 levels(heardata_pred$center)[levels(heardata_pred$center)=="2"] <- "Lille"

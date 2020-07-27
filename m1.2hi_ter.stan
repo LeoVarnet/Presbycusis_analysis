@@ -20,6 +20,8 @@ parameters {
   real<lower=0> beta_0;
   real gammaz_0 [Ncenter];
   real<lower=0,upper=1> sigma_0;
+  real gamma2z_0 [N];
+  real<lower=0,upper=1> sigma2_0;
   real<upper=0> beta_age;
   real<upper=0> beta_cond;
   real beta_gender;
@@ -35,13 +37,17 @@ transformed parameters {
   vector[N] p_n;  
   vector[N_NH] p_n_NH;  
   real gamma_0[Ncenter];
+  real gamma2_0[N];
   real beta_PTA = 0;
 
   for (i in 1:Ncenter){
     gamma_0[i] = beta_0 + gammaz_0[i]*sigma_0;
   }
   for (i in 1:N){
-    eta_s[i] = gamma_0[center[i]]
+    gamma2_0[i] = gamma_0[center[i]] + gamma2z_0[i]*sigma2_0;
+  }
+  for (i in 1:N){
+    eta_s[i] = gamma2_0[i]
           + beta_age * agez[i]
           + beta_PTA * PTAz[i]
           + beta_gender * gender[i];
@@ -59,6 +65,8 @@ model {
   beta_0 ~ normal(2,1);//normal(0,1);//
   gammaz_0 ~ normal(0,1);
   sigma_0 ~ normal(0,0.05);//normal(0,0.05);
+  gamma2z_0 ~ normal(0,1);
+  sigma2_0 ~ normal(0,0.05);//normal(0,0.05);
   beta_age ~ normal(0,1);//normal(0,2);
   beta_cond ~ normal(0,1);//normal(0,2);
   beta_gender ~ normal(0,1);//normal(0,2);
@@ -73,7 +81,7 @@ model {
       {NCn[i] ~ binomial(Ntrials, p_n[i]);
       NCs[i] ~ binomial(Ntrials, p_s[i]);}
      else
-       {1 ~ binomial(Ntrials, p_n[i]);
+       {//1 ~ binomial(Ntrials, p_n[i]);
        NCs[i] ~ binomial(Ntrials, p_s[i]);}
   }
   for (i in 1:N_NH){

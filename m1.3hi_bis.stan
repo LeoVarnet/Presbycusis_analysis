@@ -34,8 +34,7 @@ transformed parameters {
   vector[N] p_n;  
   vector[N_NH] p_n_NH;  
   real gamma_0[Ncenter];
-  real beta_age;
-  beta_age = 0;
+  real beta_age = 0;
 
   for (i in 1:Ncenter){
     gamma_0[i] = beta_0 + gammaz_0[i]*sigma_0;
@@ -45,11 +44,8 @@ transformed parameters {
           + beta_age * agez[i]
           + beta_PTA * PTAz[i]
           + beta_gender * gender[i];
-    eta_n[i] = gamma_0[center[i]] 
-          + beta_cond
-          + beta_age * agez[i]
-          + beta_PTA * PTAz[i]
-          + beta_gender * gender[i];
+    eta_n[i] = eta_s[i]
+          + beta_cond;
     p_s[i] = 1.0/16.0 + (1-1.0/16.0)*inv_logit(eta_s[i]);
     p_n[i] = 1.0/16.0 + (1-1.0/16.0-plapse[2])*inv_logit(eta_n[i]);
   }
@@ -84,18 +80,10 @@ model {
 }
 
 generated quantities {
-  //vector[N] Rsquared;
-  // for (i in 1:N){
-    //   if (NCn[i]!=3)//(NCn[i]>10)//
-    //   {Rsquared[i] = (eta_s[i]-logit(to_vector(NCs[i])/to_vector(Ntrials))^2}
-    
-    // Rsquared = (eta_s-logit(to_vector(NCs)/Ntrials)^2.
-    
     vector[2*N] log_lik;
     for (i in 1:N){
     //silence
     log_lik[i] = binomial_lpmf(NCs[i] | Ntrials, p_s[i]);
     //noise
     log_lik[N+i] = binomial_lpmf(NCn[i] | Ntrials, p_n[i]);}
-    
 }
