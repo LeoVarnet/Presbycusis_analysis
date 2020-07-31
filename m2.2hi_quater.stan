@@ -56,7 +56,7 @@ transformed parameters {
   }
 
 model {
-  beta_0 ~ normal(2,1);//normal(0,1);//
+  beta_0 ~ normal(0,1);//normal(2,1);//normal(0,1);//
   gammaz_0 ~ normal(0,1);
   sigma_0 ~ normal(0,0.05);//normal(0,0.05);
   beta_age ~ normal(0,1);//normal(0,2);

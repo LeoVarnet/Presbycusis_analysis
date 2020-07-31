@@ -20,6 +20,7 @@ parameters {
   real<lower=0,upper=1> sigma_0;
   real<upper=0> beta_age;
   real<upper=0> beta_cond;
+  real beta_gender;
   real<lower=0,upper=0.5> plapse;
 }
 
@@ -30,7 +31,7 @@ transformed parameters {
   vector[N] p_n;  
   real gamma_0[Ncenter];
   real beta_PTA = 0;
-  real beta_gender = 0;
+  //real beta_gender = 0;
 
   for (i in 1:Ncenter){
     gamma_0[i] = beta_0 + gammaz_0[i]*sigma_0;
@@ -48,12 +49,12 @@ transformed parameters {
   }
 
 model {
-  beta_0 ~ normal(2,1);//normal(0,1);//
+  beta_0 ~ normal(0,1);//normal(2,1);//normal(0,1);//
   gammaz_0 ~ normal(0,1);
   sigma_0 ~ normal(0,0.05);//normal(0,0.05);
   beta_age ~ normal(0,1);//normal(0,2);
   beta_cond ~ normal(0,1);//normal(0,2);
-  //beta_gender ~ normal(0,1);//normal(0,2);
+  beta_gender ~ normal(0,1);//normal(0,2);
   //beta_PTA ~ normal(0,1);
   
   plapse ~ beta(1,1);//beta(3600.0-2756.0,3600.0);

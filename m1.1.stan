@@ -46,11 +46,11 @@ transformed parameters {
   }
 
 model {
-  beta_0 ~ normal(2,1);//normal(0,2);
+  beta_0 ~ normal(0,1);//normal(2,1);//normal(0,2);
   beta_age ~ normal(0,1);//normal(0,2);
   beta_cond ~ normal(0,1);//normal(0,2);
   beta_gender ~ normal(0,1);//normal(0,2);
-  beta_PTA ~ normal(0,10);//normal(0,2);
+  beta_PTA ~ normal(0,1);//normal(0,2);
   plapse ~ beta(3600.0-2756.0,3600.0);
   if(!prior_only)
   for (i in 1:N){
@@ -65,15 +65,16 @@ model {
 
 
 generated quantities {
-  //vector[N] Rsquared;
-  // for (i in 1:N){
-    //   if (NCn[i]!=3)//(NCn[i]>10)//
-    //   {Rsquared[i] = (eta_s[i]-logit(to_vector(NCs[i])/to_vector(Ntrials))^2}
-    
-    // Rsquared = (eta_s-logit(to_vector(NCs)/Ntrials)^2.
-    
-    vector[2*N] log_lik;
-    for (i in 1:N){
+  vector[2*N] log_lik;
+  vector[N] err_s;
+  vector[N] err_n;
+  
+  //residuals
+  err_s = eta_s-logit(to_vector(NCs)/Ntrials);
+  err_n = eta_n-logit(to_vector(NCn)/Ntrials);
+  
+  //likelihood
+  for (i in 1:N){
     //silence
     log_lik[i] = binomial_lpmf(NCs[i] | Ntrials, p_s[i]);
     //noise

@@ -10,15 +10,16 @@ data {
   int<lower=0> Nmissing;
   int<lower=0,upper=1> prior_only;
   int<lower=0,upper=1> gender[N];
-  vector[N] PTAz;
+  vector[N] ESII_sz;
+  vector[N] ESII_nz;
   vector[N] agez;
 }
 
 parameters {
-  real<lower=0> beta_0;
+  real beta_0;
   real gammaz_0 [Ncenter];
   real<lower=0,upper=1> sigma_0;
-  real<upper=0> beta_PTA;
+  real<lower=0> beta_ESII;
   real<upper=0> beta_age;
   real<upper=0> beta_cond;
   real beta_gender;
@@ -38,9 +39,12 @@ transformed parameters {
   for (i in 1:N){
     eta_s[i] = gamma_0[center[i]]
           + beta_age * agez[i]
-          + beta_PTA * PTAz[i]
+          + beta_ESII * ESII_sz[i]
           + beta_gender * gender[i];
-    eta_n[i] = eta_s[i]
+    eta_n[i] = gamma_0[center[i]]
+          + beta_age * agez[i]
+          + beta_ESII * ESII_nz[i]
+          + beta_gender * gender[i]
           + beta_cond;
     p_s[i] = 1.0/16.0 + (1-1.0/16.0)*inv_logit(eta_s[i]);
     p_n[i] = 1.0/16.0 + (1-1.0/16.0-plapse)*inv_logit(eta_n[i]);
@@ -54,17 +58,19 @@ model {
   beta_age ~ normal(0,1);
   beta_cond ~ normal(0,1);
   beta_gender ~ normal(0,1);
-  beta_PTA ~ normal(0,1);
+  beta_ESII ~ normal(0,1);
   
   plapse ~ beta(1,1);//beta(3600.0-2756.0,3600.0);//
   if(!prior_only){
    for (i in 1:N){
      if (NCn[i]!=100)
       {NCn[i] ~ binomial(Ntrials, p_n[i]);
-      NCs[i] ~ binomial(Ntrials, p_s[i]);}
+      NCs[i] ~ binomial(Ntrials, p_s[i]);
+      }
       else
         {//0 ~ binomial(Ntrials, p_n[i]);
-        NCs[i] ~ binomial(Ntrials, p_s[i]);}
+        NCs[i] ~ binomial(Ntrials, p_s[i]);
+        }
    }
 }
 }

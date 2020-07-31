@@ -9,13 +9,15 @@ library(cowplot)
 library(dagitty)
 library(loo)
 library(gtools)
-library(psych)
+#library(psych)
 
 rm(list=ls())
 setwd("C:/Users/Léo/ownCloud/Professionnel/Projet Genopath/011_Presbyacousie_Lorenzi/R_analyses/Presbycusis_analysis")
 theme_set(theme_bw())
 heardata = read.table('mat_full.txt')
 colnames(heardata) <- c("group", "age", "PTA", "subject", "center", "gender", "NC_silence", "NC_noise")
+ESII = read.table('mat_ESII.txt')
+
 
 Ntrials = max(heardata$NC_silence); # 48 trials per condition
 Ncenter = max((heardata$center)); # 7 centers
@@ -45,6 +47,8 @@ levels(heardata$center)[levels(heardata$center)=="5"] <- "Lyon"
 levels(heardata$center)[levels(heardata$center)=="6"] <- "Bordeaux"
 levels(heardata$center)[levels(heardata$center)=="7"] <- "Toulouse"
 heardata$groupcenter = with(heardata, interaction(group,  center, sep = " - "))
+heardata$ESII_s <- ESII$V3[1:(nrow(ESII)/2)]
+heardata$ESII_n <- ESII$V3[((nrow(ESII)/2)+1):nrow(ESII)]
 
 # transform continuous variable age into a 3-level factor for representation purpose
 agefactor_cutoff = seq(from=min_age-1,to=max_age+1,length.out=4)
@@ -61,8 +65,9 @@ heardata2 <- data.frame(  unlist(list(heardata$group,heardata$group)),
                           unlist(list(heardata$gender,heardata$gender)),
                           c(heardata$NC_silence,heardata$NC_noise),
                           c(heardata$PC_silence,heardata$PC_noise),
-                          c(rep(1,length(heardata$NC_silence)),rep(2,length(heardata$NC_noise))))
-colnames(heardata2) <- c("group", "age", "PTA", "subject", "center", "gender", "NC", "PC", 'condition')
+                          c(rep(1,length(heardata$NC_silence)),rep(2,length(heardata$NC_noise))),
+                          ESII$V3)
+colnames(heardata2) <- c("group", "age", "PTA", "subject", "center", "gender", "NC", "PC", 'condition', 'ESII')
 heardata2$condition <- factor(heardata2$condition)
 levels(heardata2$condition)[levels(heardata2$condition)=="1"] <- "Silence"
 levels(heardata2$condition)[levels(heardata2$condition)=="2"] <- "Noise"
@@ -87,6 +92,13 @@ heardata$agez = (heardata$age-mean(heardata$age))/sd(heardata$age)
 heardata2$agez = (heardata2$age-mean(heardata2$age))/sd(heardata2$age)
 agez_pred = (age_pred-mean(heardata2$age))/sd(heardata2$age)
 
+ESII_pred = seq(from = 0, to = 1, by = 0.1)
+NESIIpred = length(ESII_pred)
+heardata$ESII_nz = (heardata$ESII_n-mean(heardata2$ESII))/sd(heardata2$ESII)
+heardata$ESII_sz = (heardata$ESII_s-mean(heardata2$ESII))/sd(heardata2$ESII)
+heardata2$ESIIz = (heardata2$ESII-mean(heardata2$ESII))/sd(heardata2$ESII)
+ESIIz_pred = (ESII_pred-mean(heardata2$ESII))/sd(heardata2$ESII)
+
 group_pred = c(0,1)
 cond_pred = c(0,1)
 
@@ -108,9 +120,11 @@ data <- list( agez = heardata$agez[heardata$group=="HI"],
               center = as.numeric(heardata$center[heardata$group=="HI"]),
               Ntrials = Ntrials,
               Ncenter = Ncenter,
+              ESII_nz = heardata$ESII_nz[heardata$group=="HI"],
+              ESII_sz = heardata$ESII_sz[heardata$group=="HI"],
               prior_only = 0)
 #What to do with missing values?
-# data$NCn[data$NCn==3] <- 100
+# data$NCn[data$NCn==3] <- 100 # Ignore the missing data istead of replacing it with 3%
 data$Nmissing = sum(data$NCn==100)
 
 # Inclusion thresholds
@@ -129,16 +143,24 @@ InclusionNH$age = as.numeric(InclusionNH$age)
 # Functions
 
 Rsquared <- function(data,parsfit){
-  SSerr = ((data$lPC_silence-apply(parsfit$eta_s,2,mean))^2 + (data$lPC_noise-apply(parsfit$eta_n,2,mean))^2)/2
-  SSerr = sum(SSerr[SSerr!=Inf])
-  meanlPC = (mean(data$lPC_silence[data$lPC_silence!=Inf])+mean(data$lPC_noise[data$lPC_noise!=Inf]))/2
-  SStot = ((data$lPC_silence-meanlPC)^2 + (data$lPC_noise-meanlPC)^2)/2
-  SStot = sum(SStot[SStot!=Inf])
+  SSerr = c((data$lPC_silence-apply(parsfit$eta_s,2,mean))^2,(data$lPC_noise-apply(parsfit$eta_n,2,mean))^2)
+  SSerr = mean(SSerr[SSerr!=Inf])
+  meanlPC = mean(c(data$lPC_silence[data$lPC_silence!=Inf],data$lPC_noise[data$lPC_noise!=Inf]))
+  SStot = c((data$lPC_silence-mean(c(data$lPC_silence[data$lPC_silence!=Inf])))^2, (data$lPC_noise-mean(c(data$lPC_noise[data$lPC_noise!=Inf])))^2)
+  SStot = mean(SStot[SStot!=Inf])
   Rsquared = 1-SSerr/SStot
 }
 
+Rsquared_noise <- function(data,parsfit){
+  SSerr = (data$lPC_noise-apply(parsfit$eta_n,2,mean))^2
+  SSerr = mean(SSerr[SSerr!=Inf])
+  meanlPC = mean(data$lPC_noise[data$lPC_noise!=Inf])
+  SStot = (data$lPC_noise-mean(data$lPC_noise[data$lPC_noise!=Inf]))^2
+  SStot = mean(SStot[SStot!=Inf])
+  Rsquared_noise = 1-SSerr/SStot
+}
 
-# 1. Plot PTA vs. age -----------------------------------------------------
+# Plot PTA vs. age -----------------------------------------------------
 
 p1 <- ggplot() + geom_ribbon(aes(x=InclusionHI$age,ymin=InclusionHI$PTA_male,ymax=rep(70,1,100)), fill="gray",alpha=0.3)+ 
   geom_ribbon(aes(x=InclusionHI$age,ymin=InclusionHI$PTA_female,ymax=rep(70,1,100)), fill="gray",alpha=0.2)
@@ -175,7 +197,18 @@ ggdraw(p1)
 
 ggsave("FigureInclusion.pdf", width = 6, height = 5)
 
-# 2. Plot PTA vs. PC --------------------
+# Plot ESII vs. PTA --------------------
+
+p0 <- ggplot(data=heardata) + 
+  geom_count(aes(x=PTA, y=ESII_n, color=group, alpha=0.5)) +
+  geom_count(aes(x=PTA, y=ESII_s, color=group, alpha=0.5)) +
+  #scale_size_area(max_size = 2,name = "N",n.breaks = 3) +
+  labs(x = "PTA", y = "ESII") + guides(alpha = FALSE, size = FALSE)
+
+p0 <- p0 + xlim(0, 70) + ylim(0, 1)
+p0
+
+# Plot PTA vs. PC --------------------
 
 bin2d = c(25,25)
 p2.1 <- ggplot(data = heardata2,aes(x=PTA, y=PC)) +
@@ -260,7 +293,7 @@ p2.6a <- ggplot(data = heardata2,aes(x=PTA, y=lPC, color=center)) +
   facet_grid(condition~agefactor)
 p2.6a
 
-## Effect of group and center on PTA, age and scores ----
+## Summarize effects of group and center on PTA, age and scores ----
 
 aggregate( formula = cbind(PTA, age) ~ group, data = heardata, FUN = function(x) c(mean = mean(x), sd = sd(x), med= median(x)))
 aggregate( formula = cbind(PC_silence, PC_noise) ~ group, data = heardata, FUN = function(x) c(mean = mean(x), sd = sd(x), med= median(x)))
@@ -268,7 +301,7 @@ aggregate( formula = cbind(PC_silence, PC_noise) ~ group, data = heardata, FUN =
 aggregate( formula = cbind(PTA, age) ~ group + center, data = heardata, FUN = function(x) c(mean = mean(x), sd = sd(x), med= median(x)))
 aggregate( formula = cbind(PC_silence, PC_noise) ~ group + center, data = heardata, FUN = function(x) c(mean = mean(x), sd = sd(x), med= median(x)))
 
-## 3. Plot masking effect --------------
+## Plot PTA vs masking effect --------------
 
 p3.0a <- ggplot(data = heardata, aes(x=PC_silence, y=PC_noise, color=group,alpha=0.5)) + 
   geom_count() +
@@ -338,8 +371,21 @@ p3.1c <- ggplot(data = subset(heardata,group=="HI")) +
   facet_grid(center~agefactor)+ 
   theme(legend.position = "none")
 
+## Plot ESII vs masking effect --------------
 
-## 4. non-hier model (w only main effects) -----------------
+p4.1b <- ggplot(data = subset(heardata,group=="HI")) + 
+  geom_count(aes(x=ESII_s, y=PC_silence), alpha = 1) +#, color=center
+  geom_count(aes(x=ESII_n, y=PC_noise), shape=1, alpha = 1) +#, color=center
+  #geom_segment(aes(x=PTA, xend=PTA, y=lPC_noise, yend=lPC_silence, color=center)) +
+  #scale_size(name = "N")
+  ylim(0, 100) + guides(alpha = FALSE, size = FALSE)+
+  scale_alpha(range = c(0, 1))+
+  ylab('Intellitest scores (% correct)')+
+  xlab('ESII')+
+  scale_size_area(max_size = 1.5,name = "N",n.breaks = 5) +
+  facet_grid(~agefactor)
+
+## 1.1 Simple non-hier model (w only main effects) -----------------
 
 m1.1 <- stan_model(file = 'm1.1.stan')
 
@@ -362,16 +408,25 @@ parsfit<-extract(fit.m1.1,pars=rev(fit.m1.1@model_pars))#c("beta_0","beta_PTA","
 Nsamples = length(parsfit$beta_0)
 
 parsfit$gamma_0 <- cbind(parsfit$beta_0,parsfit$beta_0,parsfit$beta_0,parsfit$beta_0,parsfit$beta_0,parsfit$beta_0,parsfit$beta_0)
-#parsfit$plapse <- matrix(parsfit$plapse,nrow=Nsamples,ncol=7,byrow=TRUE)
 
 source("counterfactuals_simple.R")
  
 p3.1b +
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='black', 'size'=1)+
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='black', 'size'=1, linetype='longdash')+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='black')+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='black')
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='black', 'size'=1)+
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='black', 'size'=1, linetype='longdash')+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='black')+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='black')
 ylim(0, 100)
+
+p3.1b +
+  geom_point(data=subset(heardata,group=="HI"),aes(x=PTA, y=PC_noise_pred), inherit.aes = FALSE, color='blue')
+# 
+#   geom_line(data=heardata_counterf,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='black', 'size'=1)+
+#   geom_line(data=heardata_counterf,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='black', 'size'=1, linetype='longdash')+
+#   geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='black')+
+#   geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='black')
+ylim(0, 100)
+
 
 # Compute goodness of fit measures
 
@@ -380,7 +435,58 @@ log_lik_1.1 <- extract_log_lik(fit.m1.1)
 loo_1.1 <- loo(log_lik_1.1)
 print(loo_1.1)
 
-## 5. Simple hier. GLM w only main effects -----------------
+## 2.1 Full non-hier. GLM on intercept -----------------
+
+m2.1 <- stan_model(file = 'm2.1.stan')
+
+fit.m2.1 <- sampling(m2.1,
+                       data = data,
+                       chains = 4,             # number of Markov chains
+                       warmup = 3000,          # number of warmup iterations per chain
+                       iter = 7000,            # total number of iterations per chain
+                       refresh = 1000)
+# diagnosis
+
+parameters = c("beta_0","beta_PTA","beta_age","beta_agePTA","beta_cond","beta_condPTA","beta_agecond","beta_agecondPTA","beta_gender","plapse")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
+print(fit.m2.1, pars = parameters)
+#launch_shinystan(fit.m2.1hi)
+plot(fit.m2.1, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m2.1") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+
+# counterfactual predictions
+
+parsfit<-extract(fit.m2.1,pars=rev(fit.m2.1@model_pars))#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","gamma_0","gamma_PTA","gamma_age","gamma_cond","gamma_condPTA","gamma_agePTA","gamma_agecond","gamma_agecondPTA"))
+Nsamples = length(parsfit$beta_0)
+
+parsfit$gamma_0 <- cbind(parsfit$beta_0,parsfit$beta_0,parsfit$beta_0,parsfit$beta_0,parsfit$beta_0,parsfit$beta_0,parsfit$beta_0)
+
+source("counterfactuals_full.R")
+
+p3.1c +
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  ylim(0, 100)
+
+p3.1b +
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
+
+p3.1b +
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
+
+# Compute goodness of fit measures
+
+Rsquared_m2.1 <- Rsquared(data,parsfit)
+log_lik_2.1 <- extract_log_lik(fit.m2.1)
+loo_2.1 <- loo(log_lik_2.1)
+print(loo_2.1)
+
+
+## 1.1hi Simple hier. GLM w only main effects -----------------
 
 m1.1hi <- stan_model(file = 'm1.1hi_quater.stan')
 
@@ -395,37 +501,44 @@ fit.m1.1hi <- sampling(m1.1hi,
 parameters = c("beta_0","gamma_0","beta_PTA","beta_age","beta_cond","beta_gender","plapse","sigma_0")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
 print(fit.m1.1hi, pars = parameters)
 #launch_shinystan(fit.m1.1hi)
-plot(fit.m1.1hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m1.1hi") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+plot(fit.m1.1hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m1.1hi") + xlim(-3,3) #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
 
-# counterfactual predictions
+# counterfactual predictions & posterior predictions
 
 parsfit<-extract(fit.m1.1hi,pars=rev(fit.m1.1hi@model_pars))#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","gamma_0","gamma_PTA","gamma_age","gamma_cond","gamma_condPTA","gamma_agePTA","gamma_agecond","gamma_agecondPTA"))
 Nsamples = length(parsfit$beta_0)
 
+source("posterior_predictions.R")
 source("counterfactuals_simple.R")
 
 p3.1c_fit <- p3.1c +
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
-  geom_ribbon(data=heardata_pred_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
-  geom_ribbon(data=heardata_pred_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
   ylim(0, 100)
 p3.1c_fit 
 
 p3.1b +
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
 
 p3.1b_fit <- p3.1b +
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
 p3.1b_fit 
+
+p3.1b +
+  geom_count(data=subset(heardata,group=="HI"),aes(x=PTA, y=PC_noise_pred), inherit.aes = FALSE, color='blue', shape=1, alpha = 1)+
+  geom_count(data=subset(heardata,group=="HI"),aes(x=PTA, y=PC_silence_pred), inherit.aes = FALSE, color='blue', alpha = 1)+
+  ylim(0, 100) + xlim(PTA_pred[1], PTA_pred[length(PTA_pred)])
 
 # Compute goodness of fit measures
 
 Rsquared_m1.1hi <- Rsquared(data,parsfit)
+Rsquaredn_m1.1hi <- Rsquared_noise(data,parsfit)
 log_lik_1.1hi <- extract_log_lik(fit.m1.1hi)
 pwll_1.1hi <- apply(log_lik_1.1hi, 2, mean)
 waic_1.1hi <- waic(log_lik_1.1hi)
@@ -443,11 +556,10 @@ PTAslope_diff = PTAslope_s - PTAslope_n
 
 C = apply(PTAslope_s,2,quantile,probs=c(0.025,0.5,0.975),na.rm = TRUE) #the median line with 95% credible intervals
 
-
 p <- ggplot(data.frame(PTAslope=c(PTAslope_s,PTAslope_n),cond=c(rep("Silence",Nsamples),rep("Noise",Nsamples))), aes(x=PTAslope,color=cond)) + 
   geom_density()
 
-## 6. Simple hier. GLM w only main effects (without PTA) -----------------
+## 1.2hi Simple hier. GLM w only main effects (without PTA) -----------------
 
 m1.2hi <- stan_model(file = 'm1.2hi_quater.stan')
 
@@ -462,43 +574,49 @@ fit.m1.2hi <- sampling(m1.2hi,
 parameters = c("beta_0","gamma_0","beta_age","beta_cond","beta_gender","plapse")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
 print(fit.m1.2hi, pars = parameters)
 #launch_shinystan(fit.m1.2hi)
-#plot(fit.m1.2hi, pars = parameters)+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
 plot(fit.m1.2hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m1.2hi") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
 
-# counterfactual predictions
+# counterfactual predictions & posterior predictions
 
 parsfit<-extract(fit.m1.2hi,pars=rev(fit.m1.2hi@model_pars))#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","gamma_0","gamma_PTA","gamma_age","gamma_cond","gamma_condPTA","gamma_agePTA","gamma_agecond","gamma_agecondPTA"))
 Nsamples = length(parsfit$beta_0)
 
+source("posterior_predictions.R")
 source("counterfactuals_simple.R")
 
 p3.1c +
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
-  geom_ribbon(data=heardata_pred_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
-  geom_ribbon(data=heardata_pred_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
   ylim(0, 100)
 
 p3.1b +
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
 
 p3.1b +
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
+
+p3.1b +
+  geom_count(data=subset(heardata,group=="HI"),aes(x=PTA, y=PC_noise_pred), inherit.aes = FALSE, color='blue', shape=1, alpha = 1)+
+  geom_count(data=subset(heardata,group=="HI"),aes(x=PTA, y=PC_silence_pred), inherit.aes = FALSE, color='blue', alpha = 1)+
+  ylim(0, 100) + xlim(PTA_pred[1], PTA_pred[length(PTA_pred)])
 
 # Compute goodness of fit measures
 
 Rsquared_m1.2hi <- Rsquared(data,parsfit)
+Rsquaredn_m1.2hi <- Rsquared_noise(data,parsfit)
 log_lik_1.2hi <- extract_log_lik(fit.m1.2hi)
 pwll_1.2hi <- apply(log_lik_1.2hi, 2, mean)
 waic_1.2hi <- waic(log_lik_1.2hi)
 loo_1.2hi <- loo(log_lik_1.2hi)
 print(loo_1.2hi)
 
-## 7. Simple hier. GLM w only main effects (without age) -----------------
+## 1.3hi Simple hier. GLM w only main effects (without age) -----------------
 
 m1.3hi <- stan_model(file = 'm1.3hi_quater.stan')
 
@@ -510,47 +628,52 @@ fit.m1.3hi <- sampling(m1.3hi,
                        refresh = 1000)
 # diagnosis
 
-parameters = c("beta_PTA","beta_cond","beta_gender")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
-parameters = c("beta_0","gamma_0","beta_PTA","beta_cond","beta_gender","plapse")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
+parameters = c("beta_0","gamma_0","beta_PTA","beta_cond","plapse","sigma_0")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
 print(fit.m1.3hi, pars = parameters)
 #launch_shinystan(fit.m1.3hi)
-plot(fit.m1.3hi, pars = parameters)+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
-plot(fit.m1.3hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m1.3hi") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+plot(fit.m1.3hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m1.3hi") + xlim(-3,3) #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#
 
-# counterfactual predictions
+# counterfactual predictions & posterior predictions
 
 parsfit<-extract(fit.m1.3hi,pars=rev(fit.m1.3hi@model_pars))#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","gamma_0","gamma_PTA","gamma_age","gamma_cond","gamma_condPTA","gamma_agePTA","gamma_agecond","gamma_agecondPTA"))
 Nsamples = length(parsfit$beta_0)
 
+source("posterior_predictions.R")
 source("counterfactuals_simple.R")
 
 p3.1c +
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
-  geom_ribbon(data=heardata_pred_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
-  geom_ribbon(data=heardata_pred_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
   ylim(0, 100)
 
 p3.1b +
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
 
 p3.1b +
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
+
+p3.1b +
+  geom_count(data=subset(heardata,group=="HI"),aes(x=PTA, y=PC_noise_pred), inherit.aes = FALSE, color='blue', shape=1, alpha = 1)+
+  geom_count(data=subset(heardata,group=="HI"),aes(x=PTA, y=PC_silence_pred), inherit.aes = FALSE, color='blue', alpha = 1)+
+  ylim(0, 100) + xlim(PTA_pred[1], PTA_pred[length(PTA_pred)])
 
 # Compute goodness of fit measures
 
 Rsquared_m1.3hi <- Rsquared(data,parsfit)
+Rsquaredn_m1.3hi <- Rsquared_noise(data,parsfit)
 log_lik_1.3hi <- extract_log_lik(fit.m1.3hi)
 pwll_1.3hi <- apply(log_lik_1.3hi, 2, mean)
 waic_1.3hi <- waic(log_lik_1.3hi)
 loo_1.3hi <- loo(log_lik_1.3hi)
 print(loo_1.3hi)
 
-## 8. Full hier. GLM on intercept -----------------
+## 2.1hi Full hier. GLM on intercept -----------------
 
 m2.1hi <- stan_model(file = 'm2.1hi_quater.stan')
 
@@ -575,25 +698,26 @@ Nsamples = length(parsfit$beta_0)
 source("counterfactuals_full.R")
 
 p3.1c +
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
-  geom_ribbon(data=heardata_pred_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
-  geom_ribbon(data=heardata_pred_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
   ylim(0, 100)
 
 p3.1b +
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
 
 p3.1b +
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
 
 # Compute goodness of fit measures
 
 Rsquared_m2.1hi <- Rsquared(data,parsfit)
+Rsquaredn_m2.1hi <- Rsquared_noise(data,parsfit)
 log_lik_2.1hi <- extract_log_lik(fit.m2.1hi)
 pwll_2.1hi <- apply(log_lik_2.1hi, 2, mean)
 waic_2.1hi <- waic(log_lik_2.1hi)
@@ -602,7 +726,7 @@ loo_2.1hi <- loo(log_lik_2.1hi)
 pwelpdloo_2.1hi <- loo_2.1hi$pointwise[,"elpd_loo"]
 print(loo_2.1hi)
 
-## 9. Full hier. GLM on intercept (without cond*PTA and age*cond*PTA) -----------------
+## 2.2hi Full hier. GLM on intercept (without cond*PTA and age*cond*PTA) -----------------
 
 m2.2hi <- stan_model(file = 'm2.2hi_quater.stan')
 
@@ -627,21 +751,21 @@ Nsamples = length(parsfit$beta_0)
 source("counterfactuals_full.R")
 
 p3.1c +
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
-  geom_ribbon(data=heardata_pred_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
-  geom_ribbon(data=heardata_pred_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
   ylim(0, 100)
 
 p3.1b +
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
 
 p3.1b +
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
 
 # Compute goodness of fit measures
 
@@ -654,7 +778,7 @@ loo_2.2hi <- loo(log_lik_2.2hi)
 pwelpdloo_2.2hi <- loo_2.2hi$pointwise[,"elpd_loo"]
 print(loo_2.2hi)
 
-## 10. Hier. GLM on intercept (with main effect + cond*PTA) -----------------
+## 2.3hi Hier. GLM on intercept (with main effect + cond*PTA) -----------------
 
 m2.3hi <- stan_model(file = 'm2.3hi_quater.stan')
 
@@ -679,21 +803,21 @@ Nsamples = length(parsfit$beta_0)
 source("counterfactuals_full.R")
 
 p3.1c +
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
-  geom_ribbon(data=heardata_pred_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
-  geom_ribbon(data=heardata_pred_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
   ylim(0, 100)
 
 p3.1b +
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
-  geom_line(data=heardata_pred_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
 
 p3.1b +
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
-  geom_line(data=heardata_pred,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
-  geom_ribbon(data=heardata_pred,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
+  geom_line(data=heardata_counterf,aes(x=PTA, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
+  geom_ribbon(data=heardata_counterf,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
 
 # Compute goodness of fit measures
 
@@ -738,6 +862,98 @@ ggplot(data = subset(heardataHI,NC_noise>3)) +
   geom_point(aes(x=PTA, y=PC_noise-PC_noise_pred, color=center), shape=1)+  
   facet_grid(~agefactor)
 
+## -- 3.1hi Simple hier. GLM ESII -------
+
+m3.1hi <- stan_model(file = 'm3.1hi.stan')
+
+fit.m3.1hi <- sampling(m3.1hi,
+                       data = data,
+                       chains = 4,             # number of Markov chains
+                       warmup = 3000,          # number of warmup iterations per chain
+                       iter = 7000,            # total number of iterations per chain
+                       refresh = 1000)
+# diagnosis
+
+parameters = c("beta_0","gamma_0","beta_ESII","beta_cond","beta_age","beta_gender","plapse","sigma_0")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
+print(fit.m3.1hi, pars = parameters)
+#launch_shinystan(fit.m1.1hi)
+plot(fit.m3.1hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m3.1hi") + xlim(-3,3) #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+
+# counterfactual predictions
+
+parsfit<-extract(fit.m3.1hi,pars=rev(fit.m3.1hi@model_pars))#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","gamma_0","gamma_PTA","gamma_age","gamma_cond","gamma_condPTA","gamma_agePTA","gamma_agecond","gamma_agecondPTA"))
+Nsamples = length(parsfit$beta_0)
+
+source("counterfactuals_ESII.R")
+
+p4.1b_fit <- p4.1b +
+  geom_line(data=heardata_counterf,aes(x=ESII, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
+  geom_line(data=heardata_counterf,aes(x=ESII, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
+  geom_ribbon(data=heardata_counterf,aes(x=ESII, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
+  geom_ribbon(data=heardata_counterf,aes(x=ESII, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
+p4.1b_fit 
+
+p4.1b_fit <- p4.1b +
+  #geom_point(data=subset(heardata,group=="HI"),aes(x=ESII_s, y=PC_silence_pred), inherit.aes = FALSE, color='blue')+
+  geom_point(data=subset(heardata,group=="HI"),aes(x=ESII_n, y=PC_noise_pred), inherit.aes = FALSE, color='blue')
+p4.1b_fit 
+
+## 4.1hi Full hier. GLM on intercept -----------------
+
+m4.1hi <- stan_model(file = 'm4.1hi.stan')
+
+fit.m4.1hi <- sampling(m4.1hi,
+                       data = data,
+                       chains = 4,             # number of Markov chains
+                       warmup = 3000,          # number of warmup iterations per chain
+                       iter = 7000,            # total number of iterations per chain
+                       refresh = 1000)
+# diagnosis
+
+parameters = c("beta_0","gamma_0","beta_ESII","beta_age","beta_ageESII","beta_cond","beta_condESII","beta_agecond","beta_agecondESII","beta_gender","plapse")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
+print(fit.m4.1hi, pars = parameters)
+#launch_shinystan(fit.m2.1hi)
+plot(fit.m4.1hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m4.1hi") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+
+# counterfactual predictions
+
+parsfit<-extract(fit.m4.1hi,pars=rev(fit.m4.1hi@model_pars))#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","gamma_0","gamma_PTA","gamma_age","gamma_cond","gamma_condPTA","gamma_agePTA","gamma_agecond","gamma_agecondPTA"))
+Nsamples = length(parsfit$beta_0)
+
+source("counterfactuals_full_ESII.R")
+
+p4.1b_fit <- p4.1b +
+  #geom_point(data=subset(heardata,group=="HI"),aes(x=ESII_s, y=PC_silence_pred), inherit.aes = FALSE, color='blue')+
+  geom_point(data=subset(heardata,group=="HI"),aes(x=ESII_n, y=PC_noise_pred), inherit.aes = FALSE, color='blue')
+p4.1b_fit 
+
+p4.1c +
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_silence_med, color=center), inherit.aes = FALSE,  'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=PTA, y=PC_noise_med, color=center), inherit.aes = FALSE, linetype='longdash', 'size'=1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_silence_Cinf, ymax=PC_silence_Csup, fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  geom_ribbon(data=heardata_counterf_center,aes(x=PTA, ymin=PC_noise_Cinf, ymax=PC_noise_Csup,  fill=center), inherit.aes = FALSE, color=NA, alpha=0.1)+
+  ylim(0, 100)
+
+p4.1b +
+  geom_line(data=heardata_counterf_center,aes(x=ESII, y=PC_silence_med, color=center), inherit.aes = FALSE, 'size'=1)+
+  geom_line(data=heardata_counterf_center,aes(x=ESII, y=PC_noise_med, color=center), inherit.aes = FALSE, 'size'=1, linetype='longdash')
+
+p4.1b +
+  geom_line(data=heardata_counterf,aes(x=ESII, y=PC_silence_med), inherit.aes = FALSE, color='blue', 'size'=1)+
+  geom_line(data=heardata_counterf,aes(x=ESII, y=PC_noise_med), inherit.aes = FALSE, color='blue', linetype='dotted', 'size'=1)+
+  geom_ribbon(data=heardata_counterf,aes(x=ESII, ymin=PC_silence_Cinf, ymax=PC_silence_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')+
+  geom_ribbon(data=heardata_counterf,aes(x=ESII, ymin=PC_noise_Cinf, ymax=PC_noise_Csup), inherit.aes = FALSE, color=NA, alpha=0.1, fill='blue')
+
+# Compute goodness of fit measures
+
+Rsquared_m4.1hi <- Rsquared(data,parsfit)
+log_lik_4.1hi <- extract_log_lik(fit.m4.1hi)
+pwll_4.1hi <- apply(log_lik_4.1hi, 2, mean)
+waic_4.1hi <- waic(log_lik_4.1hi)
+pwwaic_4.1hi <- waic_4.1hi$pointwise[,"elpd_waic"]
+loo_4.1hi <- loo(log_lik_4.1hi)
+pwelpdloo_4.1hi <- loo_4.1hi$pointwise[,"elpd_loo"]
+print(loo_4.1hi)
 
 ## Generate Figures for manuscript -----------
 

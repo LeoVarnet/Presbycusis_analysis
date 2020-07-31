@@ -36,7 +36,8 @@ transformed parameters {
     eta_s[i] = beta_0
           + beta_age * agez[i]
           + beta_PTA * PTAz[i]
-          + beta_gender * gender[i];
+          + beta_gender * gender[i]
+          + beta_agePTA * PTAz[i] .* agez[i];;
     eta_n[i] = eta_s[i]
           + beta_cond          
           + beta_agecond * agez[i]
