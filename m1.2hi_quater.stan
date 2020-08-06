@@ -31,7 +31,6 @@ transformed parameters {
   vector[N] p_n;  
   real gamma_0[Ncenter];
   real beta_PTA = 0;
-  //real beta_gender = 0;
 
   for (i in 1:Ncenter){
     gamma_0[i] = beta_0 + gammaz_0[i]*sigma_0;
