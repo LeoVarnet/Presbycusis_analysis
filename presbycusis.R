@@ -9,6 +9,7 @@ library(cowplot)
 library(dagitty)
 library(loo)
 library(gtools)
+library(RColorBrewer)
 #library(psych)
 
 rm(list=ls())
@@ -165,7 +166,7 @@ InclusionNH$age = as.numeric(InclusionNH$age)
 # Functions
 
 Rsquared <- function(data,parsfit){
-  SSerr = c((data$lPC_silence-apply(parsfit$eta_s,2,mean))^2,(data$lPC_noise-apply(parsfit$eta_n,2,mean))^2)
+  SSerr = c((data$lPC_silence-logit(apply(parsfit$p_s,2,mean)))^2,(data$lPC_noise-logit(apply(parsfit$p_n,2,mean)))^2)
   SSerr = mean(SSerr[SSerr!=Inf])
   meanlPC = mean(c(data$lPC_silence[data$lPC_silence!=Inf],data$lPC_noise[data$lPC_noise!=Inf]))
   SStot = c((data$lPC_silence-mean(c(data$lPC_silence[data$lPC_silence!=Inf])))^2, (data$lPC_noise-mean(c(data$lPC_noise[data$lPC_noise!=Inf])))^2)
@@ -174,10 +175,19 @@ Rsquared <- function(data,parsfit){
 }
 
 Rsquared_noise <- function(data,parsfit){
-  SSerr = (data$lPC_noise-apply(parsfit$eta_n,2,mean))^2
+  SSerr = (data$lPC_noise-logit(apply(parsfit$p_n,2,mean)))^2
   SSerr = mean(SSerr[SSerr!=Inf])
   meanlPC = mean(data$lPC_noise[data$lPC_noise!=Inf])
   SStot = (data$lPC_noise-mean(data$lPC_noise[data$lPC_noise!=Inf]))^2
+  SStot = mean(SStot[SStot!=Inf])
+  Rsquared_noise = 1-SSerr/SStot
+}
+
+Rsquared_silence <- function(data,parsfit){
+  SSerr = (data$lPC_silence-logit(apply(parsfit$p_s,2,mean)))^2
+  SSerr = mean(SSerr[SSerr!=Inf])
+  meanlPC = mean(data$lPC_silence[data$lPC_silence!=Inf])
+  SStot = (data$lPC_silence-mean(data$lPC_silence[data$lPC_silence!=Inf]))^2
   SStot = mean(SStot[SStot!=Inf])
   Rsquared_noise = 1-SSerr/SStot
 }
@@ -217,7 +227,7 @@ p1yhist <- insert_yaxis_grob(p1yhist, p1ySD, grid::unit(.2, "null"), position = 
 p1 <- insert_yaxis_grob(p1, p1yhist, grid::unit(.2, "null"), position = "right")
 ggdraw(p1)
 
-ggsave("FigureInclusion.pdf", width = 6, height = 5)
+#ggsave("FigureInclusion.pdf", width = 6, height = 5)
 
 # Plot ESII vs. PTA --------------------
 
@@ -232,7 +242,8 @@ p0
 
 # Plot PTA vs. PC --------------------
 
-bin2d = c(25,25)
+#bin2d = c(25,25)
+bin2d = c(50,50)
 p2.1 <- ggplot(data = heardata2,aes(x=PTA, y=PC)) +
   geom_bin2d(bins = bin2d) +
   theme_bw() + 
@@ -247,6 +258,31 @@ p2.1a <- ggplot(data = heardata2,aes(x=age, y=PC)) +
   xlab('age (y)') + ylab('% correct') +
   scale_fill_continuous(type = "viridis",limits=NULL) + facet_grid(condition~group)
 p2.1a
+p2.1b <- ggplot(data = heardata2,aes(x=ESII, y=PC)) +
+  geom_bin2d(bins = bin2d) +
+  theme_bw() + 
+  #xlim(0,70) + ylim(0,100) + 
+  xlab('ESII') + ylab('% correct') +
+  scale_fill_continuous(type = "viridis",limits=c(0,20)) + facet_grid(condition~group)
+p2.1b
+p2.1c <- ggplot(data = subset(heardata2,group=="HI"),aes(x=ESII, y=PC)) +
+  geom_bin2d(bins = bin2d) +
+  theme_bw() + 
+  xlim(0,1.05) + 
+  ylim(0,100) + 
+  xlab('ESII') + ylab('% correct') +
+  facet_grid(condition~group)+
+  scale_fill_gradientn(colours=c("#ffeb00","#ff7300", "#f30000", "#530000"))
+p2.1c
+p2.1d <- ggplot(data = subset(heardata2,group=="NH"),aes(x=ESII, y=PC)) +
+  geom_bin2d(bins = bin2d) +
+  theme_bw() + 
+  xlim(0,1.05) + 
+  ylim(0,100) + 
+  xlab('ESII') + ylab('% correct') +
+  facet_grid(condition~group) + 
+  scale_fill_gradientn(colours=c("#00deff", "#0066ff", "#0000d8","#000059"),limits=c(1,15))
+p2.1d
 
 p2.2 <- ggplot(data = heardata2,aes(x=PTA, y=PC, color=age)) +
   geom_point() +
@@ -262,6 +298,13 @@ p2.2a <- ggplot(data = heardata2,aes(x=age, y=PC, color=PTA)) +
   xlab('age (y)') + ylab('% correct') +
   scale_fill_continuous(type = "viridis",limits=NULL) + facet_grid(condition~group)
 p2.2a
+p2.2b <- ggplot(data = heardata2,aes(x=ESII, y=PC, color=group)) +
+  geom_count() +
+  theme_bw() + 
+  #xlim(0,70) + ylim(0,100) + 
+  xlab('ESII') + ylab('% correct') +
+  scale_fill_continuous(type = "viridis",limits=NULL) + facet_grid(condition~group)
+p2.2b
 
 p2.3 <- ggplot(data = heardata2,aes(x=PTA, y=PC, color=center)) +
   geom_point() +
@@ -315,9 +358,21 @@ p2.6a <- ggplot(data = heardata2,aes(x=PTA, y=lPC, color=center)) +
   facet_grid(condition~agefactor)
 p2.6a
 
-## Summarize effects of group and center on PTA, age and scores ----
+# Plot ESII vs. PC --------------------
+
+bin2d = c(30,30)
+p2.7 <- ggplot(data = heardata2,aes(x=ESII, y=PC)) +
+  geom_bin2d(bins = bin2d) +
+  theme_bw() + 
+  #xlim(0,70) + ylim(0,100) + 
+  xlab('PTA (dB HL)') + ylab('ESII') +
+  scale_fill_continuous(type = "viridis",limits=NULL) + facet_grid(condition~group)
+p2.7
+
+## Summarize effects of group and center on PTA, ESII, age and scores ----
 
 aggregate( formula = cbind(PTA, age) ~ group, data = heardata, FUN = function(x) c(mean = mean(x), sd = sd(x), med= median(x)))
+aggregate( formula = cbind(ESII_s, ESII_n) ~ group, data = heardata, FUN = function(x) c(mean = mean(x), sd = sd(x), med= median(x)))
 aggregate( formula = cbind(PC_silence, PC_noise) ~ group, data = heardata, FUN = function(x) c(mean = mean(x), sd = sd(x), med= median(x)))
 
 aggregate( formula = cbind(PTA, age) ~ group + center, data = heardata, FUN = function(x) c(mean = mean(x), sd = sd(x), med= median(x)))
@@ -1027,7 +1082,7 @@ fit.m5.1hi <- sampling(m5.1hi,
                        refresh = 1000)
 # diagnosis
 
-parameters = c("beta_0","gamma_0","beta_ESII","beta_age","beta_ageESII","beta_cond","beta_condESII","beta_agecond","beta_agecondESII","beta_gender","plapse","beta_group","beta_groupage","beta_agecondESII")#c("beta_0","gamma_0","beta_ESII","beta_age","beta_ageESII","beta_cond","beta_condESII","beta_agecond","beta_agecondESII","beta_gender","plapse","beta_group","beta_groupcond","beta_groupage","beta_groupESII","beta_groupageESII","beta_groupcondESII","beta_groupagecond","beta_agecondESII","beta_groupagecondESII")#
+parameters = c("beta_0","gamma_0","beta_ESII","beta_age","beta_ageESII","beta_cond","beta_condESII","beta_agecond","beta_agecondESII","beta_gender","plapse","beta_group","beta_groupage","beta_groupcond")#c("beta_0","gamma_0","beta_ESII","beta_age","beta_ageESII","beta_cond","beta_condESII","beta_agecond","beta_agecondESII","beta_gender","plapse","beta_group","beta_groupcond","beta_groupage","beta_groupESII","beta_groupageESII","beta_groupcondESII","beta_groupagecond","beta_agecondESII","beta_groupagecondESII")#
 print(fit.m5.1hi, pars = parameters)
 #launch_shinystan(fit.m2.1hi)
 plot(fit.m5.1hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m4.1hi") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
@@ -1038,7 +1093,7 @@ parsfit<-extract(fit.m5.1hi,pars=rev(fit.m5.1hi@model_pars))#c("beta_0","beta_PT
 Nsamples = length(parsfit$beta_0)
 
 source("posterior_predictions.R")
-source("counterfactuals_full_ESII.R")
+#source("counterfactuals_full_ESII.R")
 # 
 # p5.1b_fit <- p5.1b +
 #   geom_point(data=subset(heardata,group=="HI"),aes(x=ESII_s, y=PC_silence_pred), inherit.aes = FALSE, color='blue')+
@@ -1074,19 +1129,32 @@ p5.1b +
 
 # Compute goodness of fit measures
 
-heardata2$pred_err = c((dataHINH$lPC_silence-apply(parsfit$eta_s,2,mean))^2,(dataHINH$lPC_noise-apply(parsfit$eta_n,2,mean))^2)
+#Rsquared
+MSerr_n = (dataHINH$lPC_noise-logit(apply(parsfit$p_n,2,mean)))^2
+MSerr_HIn = MSerr_n[heardata$group=="HI"]
+MSerr_NHn = MSerr_n[heardata$group=="NH"]
+MSerr_s = (dataHINH$lPC_silence-logit(apply(parsfit$p_s,2,mean)))^2
+MSerr_HIs = MSerr_s[heardata$group=="HI"]
+MSerr_NHs = MSerr_s[heardata$group=="NH"]
+MStot_n = (dataHINH$lPC_noise-mean(dataHINH$lPC_noise[is.finite(dataHINH$lPC_noise)]))^2
+MStot_HIn = MStot_n[heardata$group=="HI"]
+MStot_NHn = MStot_n[heardata$group=="NH"]
+MStot_s = (dataHINH$lPC_silence-mean(dataHINH$lPC_silence[is.finite(dataHINH$lPC_silence)]))^2
+MStot_HIs = MStot_s[heardata$group=="HI"]
+MStot_NHs = MStot_s[heardata$group=="NH"]
 
+RsquaredHIn_m5.1hi = 1-mean(MSerr_HIn[MSerr_HIn!=Inf])/mean(MStot_HIn[MStot_HIn!=Inf])
+RsquaredHIs_m5.1hi = 1-mean(MSerr_HIs[MSerr_HIs!=Inf])/mean(MStot_HIs[MStot_HIs!=Inf])
+RsquaredNHn_m5.1hi = 1-mean(MSerr_NHn[MSerr_NHn!=Inf])/mean(MStot_NHn[MStot_NHn!=Inf])
+RsquaredNHs_m5.1hi = 1-mean(MSerr_NHs[MSerr_NHs!=Inf])/mean(MStot_NHs[MStot_NHs!=Inf])
 
-Rsquared_m4.1hi <- Rsquared(dataHINH,parsfit)
-Rsquaredn_m4.1hi <- Rsquared_noise(dataHINH,parsfit)
-log_lik_4.1hi <- extract_log_lik(fit.m4.1hi)
-pwll_4.1hi <- apply(log_lik_4.1hi, 2, mean)
-waic_4.1hi <- waic(log_lik_4.1hi)
-pwwaic_4.1hi <- waic_4.1hi$pointwise[,"elpd_waic"]
-loo_4.1hi <- loo(log_lik_4.1hi)
-pwelpdloo_4.1hi <- loo_4.1hi$pointwise[,"elpd_loo"]
-print(loo_4.1hi)
+# Prediction errors
+quantile(apply(parsfit$err_n[,heardata$group=="NH"],1,sd,na.rm=TRUE),probs=c(0.025,0.5,0.975))
+quantile(apply(parsfit$err_n[,heardata$group=="HI"],1,sd,na.rm=TRUE),probs=c(0.025,0.5,0.975))
 
+# Variance of scores
+sd(heardata$lPC_noise[heardata$group=="HI" & heardata$ESII_n > 0.35 & heardata$ESII_n<0.55 & is.finite(heardata$lPC_noise)])
+sd(heardata$lPC_noise[heardata$group=="NH" & heardata$ESII_n > 0.35 & heardata$ESII_n<0.55 & is.finite(heardata$lPC_noise)])
 
 ## Generate Figures for manuscript -----------
 
@@ -1098,3 +1166,7 @@ p3.1b_fit <- p3.1b_fit + facet_grid(group~agefactor)+theme(strip.text.y = elemen
 plot_grid(p3.1b_fit, p3.1c_fit, labels=c("A", "B"), ncol = 1, nrow = 2, rel_heights = c(1, 3))
 
 ggsave("FigureModelFit.pdf", width = 6, height = 10)
+
+plot_grid(p2.1c, p2.1d, ncol = 2, nrow = 1)
+
+ggsave("FigureDispersion.pdf", width = 8, height = 5)

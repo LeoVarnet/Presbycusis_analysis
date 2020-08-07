@@ -29,12 +29,12 @@ parameters {
   real beta_groupage;
   //real beta_groupESII;
   real beta_ageESII;
-  //real beta_condESII;
+  real beta_condESII;
   real beta_agecond;
   //real beta_groupageESII;
   //real beta_groupcondESII;
-  real beta_groupagecond;
-  //real beta_agecondESII;
+  //real beta_groupagecond;
+  real beta_agecondESII;
   //real beta_groupagecondESII;
   real<lower=0,upper=0.5> plapse [2];
 }
@@ -57,7 +57,7 @@ transformed parameters {
           + beta_ageESII * ESII_sz[i] .* agez[i]
           + beta_group * group[i]
           + beta_groupage * group[i] .* agez[i];
-          // + beta_groupESII * group[i] .* ESII_sz[i];
+          //+ beta_groupESII * group[i] .* ESII_sz[i];
           // + beta_groupageESII * group[i] * ESII_sz[i] .* agez[i];
     eta_n[i] = gamma_0[center[i]]
           + beta_age * agez[i]
@@ -70,10 +70,10 @@ transformed parameters {
           // + beta_groupageESII * group[i] * ESII_nz[i] .* agez[i]
           + beta_cond
           + beta_agecond * agez[i]
-          //+ beta_condESII * ESII_nz[i]
-          //+ beta_agecondESII * ESII_nz[i] .* agez[i];
-          + beta_groupcond * group[i]+
-          + beta_groupagecond * group[i] .* agez[i];
+          + beta_condESII * ESII_nz[i]
+          + beta_agecondESII * ESII_nz[i] .* agez[i]
+          + beta_groupcond * group[i];
+          //+ beta_groupagecond * group[i] .* agez[i];
           // + beta_groupcondESII * group[i] .* ESII_nz[i]
           // + beta_groupagecondESII * group[i] * ESII_nz[i] .* agez[i];
     p_s[i] = 1.0/16.0 + (1-1.0/16.0)*inv_logit(eta_s[i]);
@@ -94,12 +94,12 @@ model {
   beta_groupage ~ normal(0,1);
   //beta_groupESII ~ normal(0,1);
   beta_agecond ~ normal(0,1);//normal(0,2);
-  //beta_condESII ~ normal(0,1);//normal(0,2);
+  beta_condESII ~ normal(0,1);//normal(0,2);
   beta_ageESII ~ normal(0,1);//normal(0,2);
   //beta_groupageESII ~ normal(0,1);
   //beta_groupcondESII ~ normal(0,1);
-  beta_groupagecond ~ normal(0,1);
-  //beta_agecondESII ~ normal(0,1);//normal(0,2);
+  //beta_groupagecond ~ normal(0,1);
+  beta_agecondESII ~ normal(0,1);//normal(0,2);
   //beta_groupagecondESII ~ normal(0,1);
   
   plapse ~ beta(1,1);//beta(3600.0-2756.0,3600.0);
@@ -117,7 +117,13 @@ model {
 
 generated quantities {
     vector[2*N-Nmissing] log_lik;
+    vector[N] err_s;
+  vector[N] err_n;
+  
     int j=1;
+  //residuals
+  err_s = logit(p_s)-logit(to_vector(NCs)/Ntrials);
+  err_n = logit(p_n)-logit(to_vector(NCn)/Ntrials);
     for (i in 1:N){
     log_lik[i] = binomial_lpmf(NCs[i] | Ntrials, p_s[i]);    //silence
     if (NCn[i]!=100)
