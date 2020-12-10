@@ -16,10 +16,10 @@ rm(list=ls())
 setwd("C:/Users/Léo/ownCloud/Professionnel/Projet Genopath/011_Presbyacousie_Lorenzi/R_analyses/Presbycusis_analysis")
 theme_set(theme_bw())
 heardata = read.table('mat_full.txt')
-colnames(heardata) <- c("group", "age", "PTA", "subject", "center", "gender", "NC_silence", "NC_noise")
 ESII = read.table('mat_ESII.txt')
 
-
+#prepare data
+colnames(heardata) <- c("group", "age", "PTA", "subject", "center", "gender", "NC_silence", "NC_noise")
 Ntrials = max(heardata$NC_silence); # 48 trials per condition
 Ncenter = max((heardata$center)); # 7 centers
 heardata$group = factor(heardata$group)
@@ -58,6 +58,7 @@ levels(heardata$agefactor) <- c(paste("age = ", floor(agefactor_cutoff[1]), "-",
                                 paste("age = ", floor(agefactor_cutoff[2]), "-", floor(agefactor_cutoff[3]),"y"),
                                 paste("age = ", floor(agefactor_cutoff[3]), "-", floor(agefactor_cutoff[4]),"y"))#paste("age (y) =", levels(heardata$agefactor))
 
+# heardata2 same as heardata but grouped by individual
 heardata2 <- data.frame(  unlist(list(heardata$group,heardata$group)),
                           c(heardata$age,heardata$age),
                           c(heardata$PTA,heardata$PTA),
@@ -80,7 +81,6 @@ levels(heardata2$agefactor) <- c(paste("age = ", floor(agefactor_cutoff[1]), "-"
 heardata2$lPC <- qlogis(heardata2$PC/100)
 
 # Zscored data and counterfactual predictors
-
 PTA_pred = seq(from = 0, to = 70, by = 7)
 NPTApred = length(PTA_pred)
 heardata$PTAz = (heardata$PTA-mean(heardata$PTA))/sd(heardata$PTA)
@@ -104,7 +104,6 @@ group_pred = c(0,1)
 cond_pred = c(0,1)
 
 # HI Data and HI+NH data as a list for feeding Rstan models
-
 data <- list( agez = heardata$agez[heardata$group=="HI"],
               PTAz = heardata$PTAz[heardata$group=="HI"],
               agez = heardata$agez[heardata$group=="HI"],
@@ -144,14 +143,15 @@ dataHINH <- list( agez = heardata$agez,
               ESII_sz = heardata$ESII_sz,
               group = as.numeric(heardata$group)-1,
               prior_only = 0)
-#What to do with missing values?
-# data$NCn[data$NCn==3] <- 100 # Ignore the missing data istead of replacing it with 3%
+
+# Handling missing values
+# uncomment these lines to ignore the missing data instead of replacing it with 3%
+# data$NCn[data$NCn==3] <- 100 
+# dataHINH$NCn[dataHINH$NCn==3] <- 100
 data$Nmissing = sum(data$NCn==100)
-# dataHINH$NCn[dataHINH$NCn==3] <- 100 # Ignore the missing data istead of replacing it with 3%
 dataHINH$Nmissing = sum(dataHINH$NCn==100)
 
 # Inclusion thresholds
-
 InclusionHI = read.table('mat_inclusionHI.txt')
 colnames(InclusionHI) <- c("age", "PTA_female", "PTA_male")
 InclusionHI$PTA_male = as.numeric(InclusionHI$PTA_male)
@@ -164,7 +164,6 @@ InclusionNH$PTA_female = as.numeric(InclusionNH$PTA_female)
 InclusionNH$age = as.numeric(InclusionNH$age)
 
 # Functions
-
 Rsquared <- function(data,parsfit){
   SSerr = c((data$lPC_silence-logit(apply(parsfit$p_s,2,mean)))^2,(data$lPC_noise-logit(apply(parsfit$p_n,2,mean)))^2)
   SSerr = mean(SSerr[SSerr!=Inf])
@@ -173,7 +172,6 @@ Rsquared <- function(data,parsfit){
   SStot = mean(SStot[SStot!=Inf])
   Rsquared = 1-SSerr/SStot
 }
-
 Rsquared_noise <- function(data,parsfit){
   SSerr = (data$lPC_noise-logit(apply(parsfit$p_n,2,mean)))^2
   SSerr = mean(SSerr[SSerr!=Inf])
@@ -182,7 +180,6 @@ Rsquared_noise <- function(data,parsfit){
   SStot = mean(SStot[SStot!=Inf])
   Rsquared_noise = 1-SSerr/SStot
 }
-
 Rsquared_silence <- function(data,parsfit){
   SSerr = (data$lPC_silence-logit(apply(parsfit$p_s,2,mean)))^2
   SSerr = mean(SSerr[SSerr!=Inf])
@@ -365,7 +362,7 @@ p2.7 <- ggplot(data = heardata2,aes(x=ESII, y=PC)) +
   geom_bin2d(bins = bin2d) +
   theme_bw() + 
   #xlim(0,70) + ylim(0,100) + 
-  xlab('PTA (dB HL)') + ylab('ESII') +
+  xlab('ESII') + ylab('PC') +
   scale_fill_continuous(type = "viridis",limits=NULL) + facet_grid(condition~group)
 p2.7
 
@@ -491,7 +488,7 @@ m1.1 <- stan_model(file = 'm1.1.stan')
 
 fit.m1.1 <- sampling(m1.1,
                        data = data,
-                       chains = 4,             # number of Markov chains
+                       chains = 7,             # number of Markov chains
                        warmup = 3000,          # number of warmup iterations per chain
                        iter = 7000,            # total number of iterations per chain
                        refresh = 1000)
@@ -592,7 +589,7 @@ m1.1hi <- stan_model(file = 'm1.1hi_quater.stan')
 
 fit.m1.1hi <- sampling(m1.1hi,
                      data = data,
-                     chains = 4,             # number of Markov chains
+                     chains = 7,             # number of Markov chains
                      warmup = 3000,          # number of warmup iterations per chain
                      iter = 7000,            # total number of iterations per chain
                      refresh = 1000)
@@ -601,7 +598,9 @@ fit.m1.1hi <- sampling(m1.1hi,
 parameters = c("beta_0","gamma_0","beta_PTA","beta_age","beta_cond","beta_gender","plapse","sigma_0")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
 print(fit.m1.1hi, pars = parameters)
 #launch_shinystan(fit.m1.1hi)
-plot(fit.m1.1hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m1.1hi") + xlim(-3,3) #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+p.m1.1hi <- stan_plot(fit.m1.1hi, pars = parameters, show_density = TRUE, show_outer_line = TRUE, ci_level= 0.95, outer_level= 0.99, fill_color='cornflowerblue', outline_color='black', est_color='darkblue') + 
+  ggtitle("PTA-based main-effect model") + xlim(-3,3) + xlab("weights") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+p.m1.1hi
 
 # counterfactual predictions & posterior predictions
 
@@ -638,6 +637,7 @@ p3.1b +
 # Compute goodness of fit measures
 
 Rsquared_m1.1hi <- Rsquared(data,parsfit)
+Rsquareds_m1.1hi <- Rsquared_silence(data,parsfit)
 Rsquaredn_m1.1hi <- Rsquared_noise(data,parsfit)
 log_lik_1.1hi <- extract_log_lik(fit.m1.1hi)
 pwll_1.1hi <- apply(log_lik_1.1hi, 2, mean)
@@ -654,7 +654,7 @@ PTAslope_s = (1-1/16)*parsfit$beta_PTA
 PTAslope_n = (1-1/16-parsfit$plapse)*parsfit$beta_PTA
 PTAslope_diff = PTAslope_s - PTAslope_n
 
-C = apply(PTAslope_s,2,quantile,probs=c(0.025,0.5,0.975),na.rm = TRUE) #the median line with 95% credible intervals
+apply(PTAslope_diff,2,quantile,probs=c(0.025,0.5,0.975),na.rm = TRUE) #the median line with 95% credible intervals
 
 p <- ggplot(data.frame(PTAslope=c(PTAslope_s,PTAslope_n),cond=c(rep("Silence",Nsamples),rep("Noise",Nsamples))), aes(x=PTAslope,color=cond)) + 
   geom_density()
@@ -665,16 +665,19 @@ m1.2hi <- stan_model(file = 'm1.2hi_quater.stan')
 
 fit.m1.2hi <- sampling(m1.2hi,
                        data = data,
-                       chains = 4,             # number of Markov chains
+                       chains = 7,             # number of Markov chains
                        warmup = 3000,          # number of warmup iterations per chain
                        iter = 7000,            # total number of iterations per chain
                        refresh = 1000)
 # diagnosis
 
-parameters = c("beta_0","gamma_0","beta_age","beta_cond","beta_gender","plapse")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
+parameters = c("beta_0","gamma_0","beta_age","beta_cond","beta_gender","plapse", "sigma_0")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
 print(fit.m1.2hi, pars = parameters)
 #launch_shinystan(fit.m1.2hi)
-plot(fit.m1.2hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m1.2hi") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+p.m1.2hi <- stan_plot(fit.m1.2hi, pars = parameters, show_density = TRUE, show_outer_line = TRUE, ci_level= 0.95, outer_level= 0.99, fill_color='cornflowerblue', outline_color='black', est_color='darkblue') + 
+  ggtitle("age-only model") + xlim(-3,3) + xlab("weights") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+p.m1.2hi
+#plot(fit.m1.2hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m1.2hi") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
 
 # counterfactual predictions & posterior predictions
 
@@ -710,6 +713,7 @@ p3.1b +
 
 Rsquared_m1.2hi <- Rsquared(data,parsfit)
 Rsquaredn_m1.2hi <- Rsquared_noise(data,parsfit)
+Rsquareds_m1.2hi <- Rsquared_silence(data,parsfit)
 log_lik_1.2hi <- extract_log_lik(fit.m1.2hi)
 pwll_1.2hi <- apply(log_lik_1.2hi, 2, mean)
 waic_1.2hi <- waic(log_lik_1.2hi)
@@ -722,16 +726,19 @@ m1.3hi <- stan_model(file = 'm1.3hi_quater.stan')
 
 fit.m1.3hi <- sampling(m1.3hi,
                        data = data,
-                       chains = 4,             # number of Markov chains
+                       chains = 7,             # number of Markov chains
                        warmup = 3000,          # number of warmup iterations per chain
                        iter = 7000,            # total number of iterations per chain
                        refresh = 1000)
 # diagnosis
 
-parameters = c("beta_0","gamma_0","beta_PTA","beta_cond","plapse","sigma_0")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
+parameters = c("beta_0","gamma_0","beta_PTA","beta_cond","beta_gender","plapse","sigma_0")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
 print(fit.m1.3hi, pars = parameters)
 #launch_shinystan(fit.m1.3hi)
-plot(fit.m1.3hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m1.3hi") + xlim(-3,3) #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#
+p.m1.3hi <- stan_plot(fit.m1.3hi, pars = parameters, show_density = TRUE, show_outer_line = TRUE, ci_level= 0.95, outer_level= 0.99, fill_color='cornflowerblue', outline_color='black', est_color='darkblue') + 
+  ggtitle("PTA-only model") + xlim(-3,3) + xlab("weights") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+p.m1.3hi
+#plot(fit.m1.3hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m1.3hi") + xlim(-3,3) #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#
 
 # counterfactual predictions & posterior predictions
 
@@ -766,6 +773,7 @@ p3.1b +
 # Compute goodness of fit measures
 
 Rsquared_m1.3hi <- Rsquared(data,parsfit)
+Rsquareds_m1.3hi <- Rsquared_silence(data,parsfit)
 Rsquaredn_m1.3hi <- Rsquared_noise(data,parsfit)
 log_lik_1.3hi <- extract_log_lik(fit.m1.3hi)
 pwll_1.3hi <- apply(log_lik_1.3hi, 2, mean)
@@ -779,16 +787,19 @@ m2.1hi <- stan_model(file = 'm2.1hi_quater.stan')
 
 fit.m2.1hi <- sampling(m2.1hi,
                        data = data,
-                       chains = 4,             # number of Markov chains
+                       chains = 7,             # number of Markov chains
                        warmup = 3000,          # number of warmup iterations per chain
                        iter = 7000,            # total number of iterations per chain
                        refresh = 1000)
 # diagnosis
 
-parameters = c("beta_0","gamma_0","beta_PTA","beta_age","beta_agePTA","beta_cond","beta_condPTA","beta_agecond","beta_agecondPTA","beta_gender","plapse")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
+parameters = c("beta_0","gamma_0","beta_PTA","beta_age","beta_agePTA","beta_cond","beta_condPTA","beta_agecond","beta_agecondPTA","beta_gender","plapse","sigma_0")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
 print(fit.m2.1hi, pars = parameters)
 #launch_shinystan(fit.m2.1hi)
 plot(fit.m2.1hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m2.1hi") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+p.m2.1hi <- stan_plot(fit.m2.1hi, pars = parameters, show_density = TRUE, show_outer_line = TRUE, ci_level= 0.95, outer_level= 0.99, fill_color='cornflowerblue', outline_color='black', est_color='darkblue') + 
+  ggtitle("PTA-based full model") + xlim(-3,3) + xlab("weights") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+p.m2.1hi
 
 # counterfactual predictions & posterior predictions
 
@@ -824,6 +835,7 @@ p3.1b +
 
 Rsquared_m2.1hi <- Rsquared(data,parsfit)
 Rsquaredn_m2.1hi <- Rsquared_noise(data,parsfit)
+Rsquaresn_m2.1hi <- Rsquared_silence(data,parsfit)
 log_lik_2.1hi <- extract_log_lik(fit.m2.1hi)
 pwll_2.1hi <- apply(log_lik_2.1hi, 2, mean)
 waic_2.1hi <- waic(log_lik_2.1hi)
@@ -1012,20 +1024,23 @@ m4.1hi <- stan_model(file = 'm4.1hi.stan')
 
 fit.m4.1hi <- sampling(m4.1hi,
                        data = data,
-                       chains = 4,             # number of Markov chains
+                       chains = 7,             # number of Markov chains
                        warmup = 3000,          # number of warmup iterations per chain
                        iter = 7000,            # total number of iterations per chain
                        refresh = 1000)
 # diagnosis
 
-parameters = c("beta_0","gamma_0","beta_ESII","beta_age","beta_ageESII","beta_cond","beta_condESII","beta_agecond","beta_agecondESII","beta_gender","plapse")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
+parameters = c("beta_0","gamma_0","beta_ESII","beta_age","beta_ageESII","beta_cond","beta_condESII","beta_agecond","beta_agecondESII","beta_gender","plapse","sigma_0")#,"beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","plapse")#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA")
 print(fit.m4.1hi, pars = parameters)
 #launch_shinystan(fit.m2.1hi)
-plot(fit.m4.1hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m4.1hi") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+#plot(fit.m4.1hi, show_density = TRUE, show_outer_line = FALSE, ci_level= 0.95,outer_level= 0.99, pars = parameters) + ggtitle("m4.1hi") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+p.m4.1hi <- stan_plot(fit.m4.1hi, pars = parameters, show_density = TRUE, show_outer_line = TRUE, ci_level= 0.95, outer_level= 0.99, fill_color='cornflowerblue', outline_color='black', est_color='darkblue') + 
+  ggtitle("ESII-based full model") + xlim(-3,3) + xlab("weights") #+ coord_flip() + theme(axis.text.x = element_text(angle = 90, hjust = 1))#+xlim(-3,1)
+p.m4.1hi
 
 # counterfactual predictions & posterior predictions
 
-parsfit<-extract(fit.m5.1hi,pars=rev(fit.m5.1hi@model_pars))#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","gamma_0","gamma_PTA","gamma_age","gamma_cond","gamma_condPTA","gamma_agePTA","gamma_agecond","gamma_agecondPTA"))
+parsfit<-extract(fit.m4.1hi,pars=rev(fit.m4.1hi@model_pars))#c("beta_0","beta_PTA","beta_age","beta_cond","beta_condPTA","beta_agePTA","beta_agecond","beta_agecondPTA","gamma_0","gamma_PTA","gamma_age","gamma_cond","gamma_condPTA","gamma_agePTA","gamma_agecond","gamma_agecondPTA"))
 Nsamples = length(parsfit$beta_0)
 
 source("posterior_predictions.R")
@@ -1062,6 +1077,7 @@ p4.1b +
 
 Rsquared_m4.1hi <- Rsquared(data,parsfit)
 Rsquaredn_m4.1hi <- Rsquared_noise(data,parsfit)
+Rsquareds_m4.1hi <- Rsquared_silence(data,parsfit)
 log_lik_4.1hi <- extract_log_lik(fit.m4.1hi)
 pwll_4.1hi <- apply(log_lik_4.1hi, 2, mean)
 waic_4.1hi <- waic(log_lik_4.1hi)
@@ -1076,7 +1092,7 @@ m5.1hi <- stan_model(file = 'm5.1hi.stan')
 
 fit.m5.1hi <- sampling(m5.1hi,
                        data = dataHINH,
-                       chains = 4,             # number of Markov chains
+                       chains = 7,             # number of Markov chains
                        warmup = 3000,          # number of warmup iterations per chain
                        iter = 7000,            # total number of iterations per chain
                        refresh = 1000)
@@ -1170,3 +1186,12 @@ ggsave("FigureModelFit.pdf", width = 6, height = 10)
 plot_grid(p2.1c, p2.1d, ncol = 2, nrow = 1)
 
 ggsave("FigureDispersion.pdf", width = 8, height = 5)
+
+## Generate Figures for Supplementary materials -------
+
+rm(aligned)
+aligned <- align_plots(p.m1.1hi, p.m1.2hi, p.m1.3hi, p.m2.1hi, p.m4.1hi, align = "v")
+plot_grid(aligned[[1]],aligned[[2]],aligned[[3]],aligned[[4]],aligned[[5]], ncol = 2, nrow = 3)#labels=c("A", "B", "C"), 
+
+ggsave("FigurePosteriorEstimates.pdf", width = 12, height = 15)
+
